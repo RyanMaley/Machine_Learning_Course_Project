@@ -1,0 +1,153 @@
+---
+output: html_document
+---
+# Practical Machine Learning Course Project - Dec 2015 
+Author: *Ryan Maley*
+
+## Description
+This is a December 2015 submission for the course project of the Coursera predmachlearn-035 "Practical Machine Learning"  course project. Instructions are available on the course site: 
+https://class.coursera.org/predmachlearn-035/human_grading/view/courses/975205/assessments/4/submissions 
+
+## Data Source
+The training data for this project are available here: 
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here: 
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+The data for this project come from this source: http://groupware.les.inf.puc-rio.br/har.
+
+
+## Setup environment & Read the Data
+Load the required packages and actually read the data.
+```{r }
+## Required packages
+library(caret); library(ggplot2)
+
+set.seed(2015)
+
+## Create a data frame to hld some results for easy viewing
+results <- data.frame(Model=character(0),Accuracy=numeric(0),Out_Of_Sample_Err=numeric(0))
+
+## Files were previously downloaded into the working directory using the links above
+training  <- read.csv("pml-training.csv")
+testing  <- read.csv("pml-testing.csv")
+
+```
+
+## Clean, Transform and Pre-Process the Data
+Initial exploration reveals identification data that are not helpful as predictors (e.g. time stamps) and a significant amount of NAs. 
+Perform some preocessing to remove irrelvant data.
+
+```{r }
+## First seven columns are for identification and not helpful as predictors
+## Remove them
+training <- training[,-c(1:7)]
+testing <- testing[,-c(1:7)]
+
+## Check for near zero variance: show it, then remove
+nearZeroVar(training[,1:ncol(training)-1], saveMetrics=TRUE)
+nzv <- nearZeroVar(training[,1:ncol(training)-1], saveMetrics=FALSE)
+training <- training[,-nzv]
+
+## Let's remove columns that are all NAs
+training <- training[, colSums(is.na(training)) == 0] 
+
+```
+
+## Create training and validating data sets
+In order to validate, we will create a set of data to be used after trying various models on a training data set.
+
+```{r }
+## Segment the data into training and validation
+
+inTrain <- createDataPartition(y=training$classe, p=0.7, list=FALSE)
+validating <- training[-inTrain,]
+training <- training[inTrain,]
+
+```
+
+## Train with Various Models
+We will apply various models to the training data and record the accuracy outcomes. We are applying Decision Trees, Random Forests,and Boosting. We will use the various models to predict overall accuracy and assemble the results for comparison.
+
+Note: An initial attempt was made to fit a linear model, but processing failed for an unknown reason.
+```{r}
+## Decision Tree
+modDT <- train(classe~., data=training, method="rpart")
+predDT <- predict(modDT, newdata=training)
+confDT <- confusionMatrix(predDT, training$classe)
+newrow <- data.frame("Model"="Decision Tree", "Accuracy"=confDT$overall[1],
+                     Out_Of_Sample_Err=(1-confDT$overall[1]))
+results <- rbind(results, newrow)
+
+## Random Forest
+modRF <- train(classe~., data=training, method="rf")
+predRF <- predict(modRF, newdata=training)
+confRF <- confusionMatrix(predRF, training$classe)
+newrow <- data.frame("Model"="Random Forest", "Accuracy"=confRF$overall[1],
+                     Out_Of_Sample_Err=(1-confRF$overall[1]))
+results <- rbind(results, newrow)
+
+##Boosting
+modGBM <- train(classe~., data=training, method="gbm",verbose=FALSE)
+predGBM <- predict(modGBM, newdata=training)
+confGBM <- confusionMatrix(predGBM, training$classe)
+newrow <- data.frame("Model"="Boosting", "Accuracy"=confGBM$overall[1],
+                     Out_Of_Sample_Err=(1-confGBM$overall[1]))
+results <- rbind(results, newrow)
+```
+
+## Discussion and Model Selection 
+The results of the various models:
+
+```{r }
+results
+```
+
+Random Forest performs best on the training set. Apparently, the use of multiple random decision trees createed a better outcome that a single decision tree. It is essentially an ensembling technique. Apparently, boosting did identify sufficient weak predictors to create a strong predictor but the still not as strong as Random Forest.
+
+## Cross Validation
+In order to validate, we will apply the previously created model against the validation set.
+
+```{r }
+## Apply Random Forests model to validation data
+
+predVAL <- predict(modRF, newdata=validating)
+confVAL <- confusionMatrix(predVAL, validating$classe)
+
+cat("Accuracy = ",confVAL$overall[1],"  Out of Sample Error = ",1-confVAL$overall[1])
+
+```
+
+The out of sample error borders on the unbeleivalbe. It seems strange that the model predicts so well. Hopefully, this means the submission will be similarly accurate.
+
+*The results of the model against the validation set are consistent. The model will be applied to the testing set.*
+
+## Submission 
+The pml_write_files code below is the function provided in the SUbmission portion of the project.
+It will be applied against the testing data to create a file for submission.
+
+```{r }
+predictions <- predict(modRF, testing)
+
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+
+pml_write_files(predictions)
+
+```
+
+
+```{r Code-Fragements, echo=FALSE, eval=FALSE}
+
+
+
+
+```
+
+# End of Project Submission
